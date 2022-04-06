@@ -2,29 +2,37 @@
 #include "model.h"
 #include "geometry.h"
 #include<vector>
+#include<iostream>
+#include<algorithm>
 const TGAColor red = TGAColor(255, 0, 0, 255);
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor green = TGAColor(0, 255, 0, 255);
 const int width = 1000;
 const int height = 1000;
 Model* model = nullptr;
-void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
-	//Bresenham¡¯s line algorithm(ÍÆµ¼¹ı³Ì»ùÓÚ0<k<1)
-	//key:(x,y)ºóÏÂÒ»¸öµãÖ»ÓĞ¿ÉÄÜÊÇ(x,y)»ò(x,y¡À1)
+std::vector<int> line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color,bool is_record=false) {
+	std::vector<int> res;
+	if (is_record) {
+		res.resize(std::max(y0,y1)+1);
+	}
+
+	//Bresenhamâ€™s line algorithm(æ¨å¯¼è¿‡ç¨‹åŸºäº0<k<1)
+	//key:(x,y)åä¸‹ä¸€ä¸ªç‚¹åªæœ‰å¯èƒ½æ˜¯(x,y)æˆ–(x,yÂ±1)
 	bool steep = false;
 	if (std::abs(x1 - x0) < std::abs(y1 - y0)) {
 		steep = true;
 		std::swap(x0, y0);
 		std::swap(y1, x1);
 	}
-	if (x0 > x1) {//ÏÂÃæforÑ­»·ÊÇ´Óx0µ½x1µÄ£¬È·±£x0<x1
+
+	if (x0 > x1) {//ä¸‹é¢forå¾ªç¯æ˜¯ä»x0åˆ°x1çš„ï¼Œç¡®ä¿x0<x1
 		std::swap(x0, x1);
 		std::swap(y0, y1);
 	}
 	int dx = x1 - x0;
 	int dy = y1 - y0;
 	int delta_y = 1;
-	if (dy < 0) {//Ğ±ÂÊÎª¸ºµÄÇé¿öÒ²Í³Ò»ÊÓ×÷ÎªÕıĞ±ÂÊÀ´´¦Àí£¬Ö»ÒªÈÃyµÄ±ä»¯Á¿Îª-1
+	if (dy < 0) {//æ–œç‡ä¸ºè´Ÿçš„æƒ…å†µä¹Ÿç»Ÿä¸€è§†ä½œä¸ºæ­£æ–œç‡æ¥å¤„ç†ï¼Œåªè¦è®©yçš„å˜åŒ–é‡ä¸º-1
 		dy = -dy;
 		delta_y = -1;
 	}
@@ -33,9 +41,15 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
 	for (int x = x0; x <= x1; x++) {
 		if (steep) {
 			image.set(y, x, color);
+			if (is_record) {
+				res[x] = y;
+			}
 		}
 		else {
 			image.set(x, y, color);
+			if (is_record) {
+				res[y] = x;
+			}
 		}
 		error += dy;
 		if (error * 2 >= dx) {
@@ -43,16 +57,51 @@ void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
 			error -= dx;
 		}
 	}
+	return res;
 }
-void test(TGAImage& image) {
-	line(13, 20, 80, 40, image, white);
-	line(20, 13, 40, 80, image, red);
-	line(80, 40, 13, 20, image, red);
-	line(0, 0, 100, 100, image, green);
+inline std::vector<int> line(Vec2i t0, Vec2i t1, TGAImage &image, TGAColor color, bool is_record = false) {
+	return line(t0.x, t0.y, t1.x, t1.y, image, color,is_record);
 }
+void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
+	if (t0.y > t1.y) std::swap(t0, t1);
+	if (t0.y > t2.y) std::swap(t0, t2);
+	if (t1.y > t2.y) std::swap(t1, t2); 
+	std::vector<int> y_low=line(t0 ,t1, image, color, true);//åœ¨ä¸Šé¢é‡è½½ä¸€ä¸‹lineå‡½æ•°
+	std::vector<int> y_high=line(t1, t2, image, color, true);//ä¿®æ”¹ï¼šè®©lineå‡½æ•°è¿”å›ä¸€ä¸ªæ•°ç»„ï¼Œè®°å½•ç»˜åˆ¶çš„åæ ‡ç‚¹
+	std::vector<int> y_pub=line(t2, t0, image, color, true);
+	for (int y = t0.y; y < t1.y; y++) {
+		line(y_pub[y], y, y_low[y], y,image,color);
+	}
+	for (int y = t1.y; y <= t2.y; y++) {
+		line(y_pub[y], y, y_high[y], y, image, color);
+	}
+
+}
+
+//void pop_sort(Vec2i* t) { è¿™æ®µå†’æ³¡æ’åºå¯ä»¥æ”¾triangleé‡Œ
+//	for (int i = 0; i < 3; i++) {
+//		for (int j = i + 1; j < 3; j++) {
+//			if (t[i].raw[1] > t[j].raw[1]) {
+//				std::swap(t[i], t[j]);
+//			}
+//		}
+//	}
+//}
+//
 int main(int argc, char** argv) {
-	//TGAImage image(100, 100, TGAImage::RGB);
-	//test(image);
+	TGAImage image1(200,200, TGAImage::RGB);
+	Vec2i t0[3] = { Vec2i(10, 70),   Vec2i(50, 160),  Vec2i(70, 80) };
+	Vec2i t1[3] = { Vec2i(180, 50),  Vec2i(150, 1),   Vec2i(70, 180) };
+	Vec2i t2[3] = { Vec2i(180, 150), Vec2i(120, 160), Vec2i(130, 180) };
+	//pop_sort(t0);
+	//pop_sort(t1);
+	//pop_sort(t2);
+	triangle(t0[0], t0[1], t0[2], image1, red);
+	triangle(t1[0], t1[1], t1[2], image1, white);
+	triangle(t2[0], t2[1], t2[2], image1, green);
+	image1.flip_vertically();
+	image1.write_tga_file("test.tga");
+
 	model = new Model("obj/african_head/african_head.obj");
 
 	TGAImage image(width, height, TGAImage::RGB);
@@ -61,7 +110,8 @@ int main(int argc, char** argv) {
 		for (int j = 0; j < 3; j++) {
 			Vec3f v0 = model->vert(face[j]);
 			Vec3f v1 = model->vert(face[(j + 1) % 3]);
-			//ÒÔÏÂÏàµ±ÓÚ³ËÒÔÊÓ¿Ú±ä»»¾ØÕó
+			//modelé‡Œçš„é¡¶ç‚¹éƒ½åœ¨[-1,1]ç«‹æ–¹ä½“å†…äº†ï¼Œç›¸å½“äºå·²ç»ç»è¿‡é€è§†å˜æ¢
+			//ä¹‹åå†ä¹˜ä»¥è§†å£å˜æ¢çŸ©é˜µå³å¯
 			int x0 = (v0.x + 1.) * width / 2.;
 			int y0 = (v0.y + 1.) * height / 2.;
 			int x1 = (v1.x + 1.) * width / 2.;
@@ -71,5 +121,6 @@ int main(int argc, char** argv) {
 	}
 	image.flip_vertically();
 	image.write_tga_file("face.tga");
+	delete model;
 	return 0;
 }
