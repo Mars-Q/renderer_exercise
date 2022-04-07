@@ -4,17 +4,14 @@
 #include<vector>
 #include<iostream>
 #include<algorithm>
+#include<random>
 const TGAColor red = TGAColor(255, 0, 0, 255);
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor green = TGAColor(0, 255, 0, 255);
 const int width = 1000;
 const int height = 1000;
 Model* model = nullptr;
-std::vector<int> line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color,bool is_record=false) {
-	std::vector<int> res;
-	if (is_record) {
-		res.resize(std::max(y0,y1)+1);
-	}
+void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
 
 	//Bresenham’s line algorithm(推导过程基于0<k<1)
 	//key:(x,y)后下一个点只有可能是(x,y)或(x,y±1)
@@ -41,15 +38,9 @@ std::vector<int> line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor 
 	for (int x = x0; x <= x1; x++) {
 		if (steep) {
 			image.set(y, x, color);
-			if (is_record) {
-				res[x] = y;
-			}
 		}
 		else {
 			image.set(x, y, color);
-			if (is_record) {
-				res[y] = x;
-			}
 		}
 		error += dy;
 		if (error * 2 >= dx) {
@@ -57,66 +48,73 @@ std::vector<int> line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor 
 			error -= dx;
 		}
 	}
-	return res;
 }
-inline std::vector<int> line(Vec2i t0, Vec2i t1, TGAImage &image, TGAColor color, bool is_record = false) {
-	return line(t0.x, t0.y, t1.x, t1.y, image, color,is_record);
-}
-void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage &image, TGAColor color) {
-	if (t0.y > t1.y) std::swap(t0, t1);
-	if (t0.y > t2.y) std::swap(t0, t2);
-	if (t1.y > t2.y) std::swap(t1, t2); 
-	std::vector<int> y_low=line(t0 ,t1, image, color, true);//在上面重载一下line函数
-	std::vector<int> y_high=line(t1, t2, image, color, true);//修改：让line函数返回一个数组，记录绘制的坐标点
-	std::vector<int> y_pub=line(t2, t0, image, color, true);
-	for (int y = t0.y; y < t1.y; y++) {
-		line(y_pub[y], y, y_low[y], y,image,color);
-	}
-	for (int y = t1.y; y <= t2.y; y++) {
-		line(y_pub[y], y, y_high[y], y, image, color);
-	}
-
+inline void line(Vec2i t0, Vec2i t1, TGAImage &image, TGAColor color) {
+	return line(t0.x, t0.y, t1.x, t1.y, image, color);
 }
 
-//void pop_sort(Vec2i* t) { 这段冒泡排序可以放triangle里
-//	for (int i = 0; i < 3; i++) {
-//		for (int j = i + 1; j < 3; j++) {
-//			if (t[i].raw[1] > t[j].raw[1]) {
-//				std::swap(t[i], t[j]);
-//			}
-//		}
-//	}
-//}
-//
+Vec3f barycentric(Vec2i* tri,Vec2i point) {//返回该点的重心坐标（x，y，z） 几何意义：（Sa/（Sa+Sb+Sc），...，...） 可用于插值
+	Vec3f res = Vec3f(tri[1].x - tri[0].x, tri[2].x - tri[0].x, tri[0].x - point.x) ^ Vec3f(tri[1].y - tri[0].y, tri[2].y - tri[0].y, tri[0].y - point.y);
+	if (std::abs(res.z) < 1) {//防止res.z为0作为除数
+		return Vec3f(-1, -1, -1);//返回一个非法的（在三角形外的点的）重心坐标
+	}
+	return Vec3f(1.f - (res.x + res.y) / res.z, res.x / res.z, res.y/ res.z);//重心坐标(1-u-v,u,v) res是和(u,v,1)平行的向量
+}
+void triangle(Vec2i* tri, TGAImage &image, TGAColor color) {
+	line(tri[0] ,tri[1], image, color);
+	line(tri[1], tri[2], image, color);
+	line(tri[2], tri[0], image, color);
+	//计算三角形的矩形边界
+	int x_min = std::min(tri[0].x, std::min(tri[1].x, tri[2].x));
+	int y_min = std::min(tri[0].y, std::min(tri[1].y, tri[2].y));
+	int x_max = std::max(tri[0].x, std::max(tri[1].x, tri[2].x));
+	int y_max = std::max(tri[0].y, std::max(tri[1].y, tri[2].y));
+	for (int x = x_min; x <= x_max; x++) {
+		for (int y = y_min; y <= y_max; y++) {
+			Vec3f bct = barycentric(tri, Vec2i (x, y));
+			if (bct.x < 0 || bct.y < 0 || bct.z < 0) continue;
+			image.set(x, y, color);
+		}
+	}
+}
+
 int main(int argc, char** argv) {
 	TGAImage image1(200,200, TGAImage::RGB);
 	Vec2i t0[3] = { Vec2i(10, 70),   Vec2i(50, 160),  Vec2i(70, 80) };
 	Vec2i t1[3] = { Vec2i(180, 50),  Vec2i(150, 1),   Vec2i(70, 180) };
 	Vec2i t2[3] = { Vec2i(180, 150), Vec2i(120, 160), Vec2i(130, 180) };
-	//pop_sort(t0);
-	//pop_sort(t1);
-	//pop_sort(t2);
-	triangle(t0[0], t0[1], t0[2], image1, red);
-	triangle(t1[0], t1[1], t1[2], image1, white);
-	triangle(t2[0], t2[1], t2[2], image1, green);
+	triangle(t0, image1, red);
+	triangle(t1, image1, white);
+	triangle(t2, image1, green);
 	image1.flip_vertically();
 	image1.write_tga_file("test.tga");
 
 	model = new Model("obj/african_head/african_head.obj");
-
+	Vec3f light(0, 0, -1);
 	TGAImage image(width, height, TGAImage::RGB);
 	for (int i = 0; i < model->nfaces(); i++) {
 		std::vector<int> face = model->face(i);
+		Vec2i tri[3];
+		Vec3f tri_withZ[3];
 		for (int j = 0; j < 3; j++) {
 			Vec3f v0 = model->vert(face[j]);
-			Vec3f v1 = model->vert(face[(j + 1) % 3]);
+			tri_withZ[j] = v0;
+			//Vec3f v1 = model->vert(face[(j + 1) % 3]);
 			//model里的顶点都在[-1,1]立方体内了，相当于已经经过透视变换
 			//之后再乘以视口变换矩阵即可
 			int x0 = (v0.x + 1.) * width / 2.;
 			int y0 = (v0.y + 1.) * height / 2.;
-			int x1 = (v1.x + 1.) * width / 2.;
-			int y1 = (v1.y + 1.) * height / 2.;
-			line(x0, y0, x1, y1, image, white);
+			//int x1 = (v1.x + 1.) * width / 2.;
+			//int y1 = (v1.y + 1.) * height / 2.;
+			//line(x0, y0, x1, y1, image, white); 在线上的点重心坐标也非负，在triangle里也会画，就不必重复画了
+			tri[j].x = x0;
+			tri[j].y = y0;
+		}
+		Vec3f normal_vector =(tri_withZ[2]-tri_withZ[0])^ (tri_withZ[1] - tri_withZ[0]);
+		normal_vector.normalize();
+		float k = light * normal_vector.normalize();
+		if (k > 0) {
+			triangle(tri, image, TGAColor(k * 255, k * 255, k * 255, 255));
 		}
 	}
 	image.flip_vertically();
